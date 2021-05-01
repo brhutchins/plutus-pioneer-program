@@ -1,0 +1,47 @@
+#+TITLE: Plutus Week 3
+* ScriptContext
+- Defined in plutus-ledger-api
+- Record type with two fields
+  + TxInfo
+    - txInputs and Outputs
+    - Global for transaction:
+      + txInfoFee
+      + txInfoValidRange :: SlotRange
+        - This week's focus
+        - How do you manage time when you validate in the wallet?
+          + e.g., deadlines
+        - Provides time interval between $x$ and $y$ slots
+          + Interval for validation by period
+      + Key–value pairs from DatumHash to Datum
+    - TxID
+  + ScriptPurpose
+    - Minting
+      + For minting native tokens
+    - Spending
+      + For spending
+    - Rewarding
+      + Staking
+    - Certifying
+      + e.g., delegation certificates
+* SlotRange
+#+BEGIN_SRC haskell
+newtype Slot = Slot { getSLot :: Integer }
+    deriving stock (Haskell.Eq, Haskell.Ord, Show, Generic)
+    deriving anyclass (FromJSON, FromJSONKey, ToJSON, ToJSONKey, NFData)
+    deriving newtype (Haskell.Num, AdditiveSemigroup, AdditiveMonoid, AdditiveGroup, Enum, Eq, Ord, Real, Integral, Serialise, Hashable, PlutusTx.IsData)
+
+type SlotRange = Interval Slot
+#+END_SRC
+- UpperBound /is/ included (despite docs)
+- always is default
+- validating src_haskell{from now} is better than validating src_haskell{now}, because network delays might make validation happen later than expected
+* Lift class
+** liftcode
+Turns some Haskell value into PlutusScript code
+* Get wallet hashes from the REPL
+#+BEGIN_SRC haskell
+import Wallet.Emulator
+import Ledger
+
+pubKeyHash $ walletPubKey $ Wallet 1
+#+END_SRC
