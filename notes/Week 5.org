@@ -1,15 +1,15 @@
 #+TITLE: Plutus Pioneer Program Week 5
 * Value
 - =plutus-ledger-api=
-- Value is a Map from ~CurrecySymbol~ to ~TokenName :: Integer~
-- ~adaSymbol :: CurrencySymbol~
-- ~adaToken :: TokenName~
+- Value is a Map from ~CurrecySymbol~ to ~TokenName \:: Integer~
+- ~adaSymbol \:: CurrencySymbol~
+- ~adaToken \:: TokenName~
 - ~lovelaceValueOf~ gives turns an Integer into a Lovelace value
   + Is a monoid, so can be combined with mappend
     - ~lovelaceValueOf 123 <> lovelaceValueOf 10 == Value (Map [(,Map [("",133)])])~
-- ~singleton :: CurrencySymbol -> TokenName -> Integer -> Value~
-- ~valueOf :: Value -> CurrencySymbol -> TokenName -> Integer~
-- ~flattenValue :: Value -> [(CurrencySymbol, TokenName, Integer)]~
+- ~singleton \:: CurrencySymbol -> TokenName -> Integer -> Value~
+- ~valueOf \:: Value -> CurrencySymbol -> TokenName -> Integer~
+- ~flattenValue \:: Value -> [(CurrencySymbol, TokenName, Integer)]~
 * Minting policies
 - Everything is a transaction
 - ~CurrencySymbol~ is the hash of a script
@@ -19,7 +19,7 @@
     - Contains a ~Value~
     - For each ~CurrencySymbol~ in the ~txInfoForge~, a different minting policy is run
     - Only one input to the minting policy script: the context
-      + ~mkPolicy :: ScriptContext -> Bool~
+      + ~mkPolicy \:: ScriptContext -> Bool~
 - ~policy = mkMonetaryPolicy $$(PlutusTx.compile [|| Scripts.wrapMonetaryPolicy mkPolicy ||])~
 - ~curSymbol = scriptCurrencySymbol policy~
   + ~scriptCurrencySymbol~ generates a currency symbol from a policy
