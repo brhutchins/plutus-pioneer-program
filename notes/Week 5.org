@@ -1,0 +1,118 @@
+#+TITLE: Plutus Pioneer Program Week 5
+* Value
+- =plutus-ledger-api=
+- Value is a Map from ~CurrecySymbol~ to ~TokenName :: Integer~
+- ~adaSymbol :: CurrencySymbol~
+- ~adaToken :: TokenName~
+- ~lovelaceValueOf~ gives turns an Integer into a Lovelace value
+  + Is a monoid, so can be combined with mappend
+    - ~lovelaceValueOf 123 <> lovelaceValueOf 10 == Value (Map [(,Map [("",133)])])~
+- ~singleton :: CurrencySymbol -> TokenName -> Integer -> Value~
+- ~valueOf :: Value -> CurrencySymbol -> TokenName -> Integer~
+- ~flattenValue :: Value -> [(CurrencySymbol, TokenName, Integer)]~
+* Minting policies
+- Everything is a transaction
+- ~CurrencySymbol~ is the hash of a script
+  + Ada has no symbol, because, being the default, it has no minting policies.
+- Similar to validation scripts, but not identical
+  + For minting policies, ~TxInfo { txInfoForge }~ is non-zero
+    - Contains a ~Value~
+    - For each ~CurrencySymbol~ in the ~txInfoForge~, a different minting policy is run
+    - Only one input to the minting policy script: the context
+      + ~mkPolicy :: ScriptContext -> Bool~
+- ~policy = mkMonetaryPolicy $$(PlutusTx.compile [|| Scripts.wrapMonetaryPolicy mkPolicy ||])~
+- ~curSymbol = scriptCurrencySymbol policy~
+  + ~scriptCurrencySymbol~ generates a currency symbol from a policy
+** Minimal on-chain minting policy:
+#+BEGIN_SRC haskell
+{-# INLINABLE mkPolicy #-}
+mkPolicy :: ScriptContext -> Bool
+mkPolicy _ = True
+
+policy :: Scripts.MonetaryPolicy
+policy = mkMonetaryPolicyScript $$(PlutusTx.compile [|| Scripts.wrapMonetaryPolicy mkPolicy ||])
+
+curSymbol :: CurrencySymbol
+curSymbol = scriptCurrencySymbol policy
+#+END_SRC
+** Off-chain Part
+#+BEGIN_SRC haskell
+data MintParams = MintParams
+    { mpTokenName :: !TokenName
+    , mpAmount    :: !Integer -- If > 0, create tokens; if < 0, burn tokens
+    } deriving (Generic, ToJSON, FromJSON, ToSchema)
+#+END_SRC
+- Constraints
+  - Declaratively define conditions for transaction
+  - ~submitTxContraintsWith~
+    + There are variants without the 'with'
+      - For not looking up policies?
+- Currently have to wait for confirmed message; later will be able to check status
+* NFTs
+- To produce
+  + Check the ~Forge~ field to only allow minting one token?
+    - Wouldn't work: that would only allow one token *per* transaction
+  + Deadlines:
+    - Used prior to Plutus
+    - Mint one coin before the deadline has passed
+    - Wait for the deadline to pass
+    - Then it's guaranteed that no new coins can ever be minted
+    - Need blockchain explorer to check that only one was minted before the deadline
+      + The currency symbol itself doesn't guarantee that it's an NFT
+  + With Plutus, the policy script can ensure only one mint transaction can ever take place
+    - No need to check with blockchain explorer
+    - Why can't you just do the same transaction again (e.g., multiple transactions using the minting policy at the same slot, to avoid passing the deadline)?
+      + Use UTxOs – each UTxO is unique
+        - Each transaction is unique
+          + Because they take fees, and each fee must come from a previous UTxO
+          + Can't use the same one twice
+        - Can use this to produce NFTs
+** Building an NFT minting policy script
+- ~TxOutRef~: an identifier for a UTxO
+- ~TxInfoForge~
+#+BEGIN_SRC haskell
+data TxInfo
+  = TxInfo {txInfoInputs :: [TxInInfo],
+            txInfoInputsFees :: [TxInInfo],
+            txInfoOutputs :: [TxOut],
+            txInfoFee :: Value,
+            txInfoForge :: Value,
+            txInfoDCert :: [Plutus.V1.Ledger.DCert.DCert],
+            txInfoWdrl :: [(Plutus.V1.Ledger.Credential.StakingCredential,
+                            Integer)],
+            txInfoValidRange :: SlotRange,
+            txInfoSignatories :: [PubKeyHash],
+            txInfoData :: [(DatumHash, Datum)],
+            txInfoId :: TxId}
+        -- Defined in ‘Plutus.V1.Ledger.Contexts’
+
+data TxInInfo
+  = TxInInfo {txInInfoOutRef :: TxOutRef, txInInfoResolved :: TxOut}
+        -- Defined in ‘Plutus.V1.Ledger.Contexts’
+#+END_SRC
+- What's the currency symbol?
+  + Problem: given by hash of current script – but how do you know that in advance?
+    - ~ownCurrencySymbol~ gives you access to the currency symobl of the current script
+      #+BEGIN_SRC haskell
+ownCurrencySymbol :: ScriptContext -> CurrencySymbol
+        -- Defined in ‘Plutus.V1.Ledger.Contexts’
+      #+END_SRC
+- ~Map.keys <$> utxoAt (pubKeyAddress Contract.ownPubKey)~: get all the UTxO IDs owned by own address
+  #+BEGIN_SRC haskell
+utxoAt ::
+  (AsContractError e, HasUtxoAt s) =>
+  Address -> Contract w s e Ledger.AddressMap.UtxoMap
+        -- Defined in ‘Plutus.Contract.Effects.UtxoAt’
+
+pubKeyAddress :: PubKey -> Address
+        -- Defined in ‘Plutus.V1.Ledger.Address’
+  #+END_SRC
+- Need second constrain for NFT, so that it both ~Constraints.mustForgeValue~ and also consume the UTxO
+  + ~mustSpendPubKeyOutput~
+    #+BEGIN_SRC haskell
+mustSpendPubKeyOutput :: TxOutRef -> TxConstraints i o
+        -- Defined in ‘Ledger.Constraints.TxConstraints’
+    #+END_SRC
+  + Constraints form a semigroup, so can be combined with the ~<>~ operator
+    - Difference between monoid and semigroup: semigroup doesn't have ~mempty~
+- Also need ~Constraints.unspentOutputs~ for lookups
